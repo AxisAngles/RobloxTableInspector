@@ -82,7 +82,7 @@ function TableInspector.new()
 
 	self.backFrame = Instance.new("Frame")
 	self.backFrame.BackgroundTransparency = 1 
-	self.backFrame.Size = UDim2.fromOffset(600, 400) -- just initialize with something small
+	self.backFrame.Size = UDim2.fromScale(1, 1) -- just initialize with something small
 	self.backFrame.ClipsDescendants = true
 
 	self.basisFrame = Instance.new("Frame")
