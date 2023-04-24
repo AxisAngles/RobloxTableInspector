@@ -174,6 +174,9 @@ function TableInspector:destroy()
 	for i, connection in self._connections do
 		connection:Disconnect()
 	end
+	for tableRoot in self._tableRoots do
+		tableRoot:destroy()
+	end
 end
 
 --function TableInspector:registerHighlight(value, element)
