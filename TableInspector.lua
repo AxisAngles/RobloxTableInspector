@@ -38,7 +38,7 @@ local operatorColor3 = Color3.fromRGB(204, 204, 204)
 
 local highlightColor3 = Color3.fromRGB(255, 183, 0)
 
-local doubleClickPeriod = 1/4
+local doubleClickInterval = 1/4
 
 
 
@@ -553,7 +553,7 @@ function Element:inputBegan(inputObject)
 		return true
 	else
 		local t = os.clock()
-		if t - self._lastExpansionAttempt < doubleClickPeriod and 
+		if t - self._lastExpansionAttempt < doubleClickInterval and 
 			(self._lastExpansionAttemptPosition - getMousePosition()).magnitude < 4 then
 			self:toggleExpansion()
 			return true
