@@ -3,13 +3,17 @@
 
 -- local tableRoot = tableInspector:addTable(name, tab) to make a new tableRoot which looks at tab
 -- local anotherTableRoot = tableInspector:addPath(name, {tab, 1, "t"}) to make a new tableRoot which looks at tab[1].t
+-- tableInspector:removeTable(tab) to remove a table or path
 
--- LMB on the background to drag everything
+-- LMB on the background to drag everything (if enabled)
 -- LMB on a table to drag just the table
 -- MMB on a table to delete the table
--- Doubleclick LMB on a table to expand/collapse
+-- Doubleclick LMB or RMB on a table to expand/collapse
 -- Shift + LMB on any value to drag out the path
 -- Ctrl + LMB on a table to drag out the table
+
+-- interaction settings
+local backgroundDragEnabled = true
 
 -- settings for customizing the look of the table inspector
 local textPad = Vector2.new(2, 2) -- radius
@@ -82,7 +86,7 @@ function TableInspector.new()
 
 	self.backFrame = Instance.new("Frame")
 	self.backFrame.BackgroundTransparency = 1 
-	self.backFrame.Size = UDim2.fromScale(1, 1) -- just initialize with something small
+	self.backFrame.Size = UDim2.fromScale(1, 1)
 	self.backFrame.ClipsDescendants = true
 
 	self.basisFrame = Instance.new("Frame")
@@ -100,7 +104,12 @@ function TableInspector.new()
 	self._connections = {}
 	self._hoveringFrames = {}
 
+	self._visible = false
+
 	self._connections[1] = game:GetService("RunService").RenderStepped:Connect(function()
+		self._visible = self:_isVisible()
+		if not self._visible then return end
+
 		local mousePosition = getMousePosition()
 		self._hoveringFrames = playerGui:getGuiObjectsAtPosition(mousePosition.x, mousePosition.y)
 
@@ -123,8 +132,9 @@ function TableInspector.new()
 	end)
 
 	self._connections[2] = UserInputService.InputBegan:Connect(function(inputObject, inputProcessed)
+		if not self._visible then return end
 		if inputProcessed then return end
-		if game:GetService("UserInputService").MouseBehavior == Enum.MouseBehavior.LockCenter then
+		if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
 			return
 		end
 
@@ -138,8 +148,9 @@ function TableInspector.new()
 	end)
 
 	self._connections[3] = UserInputService.InputChanged:Connect(function(inputObject, inputProcessed)
+		if not self._visible then return end
 		if inputProcessed then return end
-		if game:GetService("UserInputService").MouseBehavior == Enum.MouseBehavior.LockCenter then
+		if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
 			return
 		end
 
@@ -153,6 +164,7 @@ function TableInspector.new()
 	end)
 
 	self._connections[4] = UserInputService.InputEnded:Connect(function(inputObject, inputProcessed)
+		--if not self._visible then return end
 		--if inputProcessed then return end
 
 		for i, frame in self._hoveringFrames do
@@ -177,23 +189,9 @@ function TableInspector:destroy()
 	for tableRoot in self._tableRoots do
 		tableRoot:destroy()
 	end
+
+	self:unregisterFrame(self.backFrame)
 end
-
---function TableInspector:registerHighlight(value, element)
---	if not self._highlightableElements[value] then
---		self._highlightableElements[value] = {}
---	end
-
---	self._highlightableElements[value][element] = true
---end
-
---function TableInspector:unregisterHighlight(value, element)
---	self._highlightableElements[value][element] = nil
-
---	if not next(self._highlightableElements[value]) then
---		self._highlightableElements[value] = nil
---	end
---end
 
 function TableInspector:addPath(name, path, optionalElement)
 	local tableRoot = TableRoot.new(self, `...{name}`, path, optionalElement)
@@ -209,8 +207,21 @@ function TableInspector:addTable(name, tab, optionalElement)
 	return tableRoot
 end
 
+function TableInspector:removeTable(tab)
+	for tableRoot in self._tableRoots do
+		if tableRoot._path[1] == tab then
+			tableRoot:destroy()
+			return
+		end
+	end
+end
+
 function TableInspector:registerFrame(frame, object)
 	self._activeElements[frame] = object
+end
+
+function TableInspector:unregisterFrame(frame)
+	self._activeElements[frame] = nil
 end
 
 function TableInspector:inputChanged(inputObject)
@@ -228,17 +239,63 @@ function TableInspector:inputChanged(inputObject)
 		local basisRelative = (basisPosition - self.backFrame.AbsolutePosition)/self.backFrame.AbsoluteSize
 
 		self.basisScale.Scale = 2^(self._logScale/2)
-		self.basisFrame.Position = UDim2.fromScale(basisRelative.x, basisRelative.y)
+		--self.basisFrame.Position = UDim2.fromScale(basisRelative.x, basisRelative.y)
+		self:setBasisPosition(basisPosition)
 
 		return true
 	end
 end
 
 function TableInspector:inputBegan(inputObject)
-	if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
+	if backgroundDragEnabled and inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
 		self:drag(Enum.UserInputType.MouseButton1)
 		return true
 	end
+end
+
+function TableInspector:getAbsoluteBounds()
+	local boundMin = Vector2.new( 1/0,  1/0)
+	local boundMax = Vector2.new(-1/0, -1/0)
+	for tableRoot in self._tableRoots do
+		local frameMin = tableRoot.dragFrame.AbsolutePosition
+		local frameMax = frameMin + tableRoot.dragFrame.AbsoluteSize
+		boundMin = boundMin:Min(frameMin)
+		boundMax = boundMax:Max(frameMax)
+	end
+	
+	return boundMin, boundMax
+end
+
+function TableInspector:setBasisPosition(newPosition)
+	local parentPosition = self.basisFrame.Parent.AbsolutePosition
+	local parentSize = self.basisFrame.Parent.AbsoluteSize
+	local oldPosition = self.basisFrame.AbsolutePosition
+	local boundMin, boundMax = self:getAbsoluteBounds()
+	local localMin = boundMin - oldPosition
+	local localMax = boundMax - oldPosition
+
+	local newMin = newPosition + localMin
+	local newMax = newPosition + localMax
+
+	local portMin = parentPosition
+	local portMax = parentPosition + parentSize
+	if newMax.X < portMin.X then
+		newPosition += Vector2.new(portMin.X - newMax.X, 0)
+	elseif newMin.X > portMax.X then
+		newPosition += Vector2.new(portMax.X - newMin.X, 0)
+	end
+
+	if newMax.Y < portMin.Y then
+		newPosition += Vector2.new(0, portMin.Y - newMax.Y)
+	elseif newMin.Y > portMax.Y then
+		newPosition += Vector2.new(0, portMax.Y - newMin.Y)
+	end
+
+	local newScalePosition = (newPosition - parentPosition)/parentSize
+
+
+	local newScalePosition = (newPosition - parentPosition)/parentSize
+	self.basisFrame.Position = UDim2.fromScale(newScalePosition.x, newScalePosition.y)
 end
 
 -- drag routine
@@ -255,21 +312,42 @@ function TableInspector:drag(exitInputType)
 
 	self._dragConnection1 = game:GetService("RunService").RenderStepped:Connect(function()
 		local newPosition = getMousePosition() - mouseOffsetScale*self.basisFrame.AbsoluteSize
-		local newScalePosition = (newPosition - self.basisFrame.Parent.AbsolutePosition)/self.basisFrame.Parent.AbsoluteSize
-		self.basisFrame.Position = UDim2.fromScale(newScalePosition.x, newScalePosition.y)
+		self:setBasisPosition(newPosition)
 	end)
 
-	self._dragConnection2 = game:GetService("UserInputService").InputEnded:Connect(function(inputObject)
+	self._dragConnection2 = UserInputService.InputEnded:Connect(function(inputObject)
 		if inputObject.UserInputType ~= exitInputType then return end
 
 		local newPosition = getMousePosition() - mouseOffsetScale*self.basisFrame.AbsoluteSize
-		local newScalePosition = (newPosition - self.basisFrame.Parent.AbsolutePosition)/self.basisFrame.Parent.AbsoluteSize
-		self.basisFrame.Position = UDim2.fromScale(newScalePosition.x, newScalePosition.y)
+		self:setBasisPosition(newPosition)
 
 		self._dragging = false
 		self._dragConnection1:Disconnect()
 		self._dragConnection2:Disconnect()
 	end)
+end
+
+local function isVisible(object)
+	if not object then
+		return false
+	elseif object:IsA("GuiObject") then
+		if not object.Visible then
+			return false
+		end
+	elseif object:IsA("ScreenGui") then
+		if not object.Enabled then
+			return false
+		end
+	elseif object:IsA("LayerCollector") then
+		return object.Enabled
+	elseif object:IsA("BasePlayerGui") then
+		return true
+	end
+	return isVisible(object.Parent)
+end
+
+function TableInspector:_isVisible()
+	return isVisible(self.backFrame)
 end
 
 
@@ -351,7 +429,10 @@ end
 function TableRoot:destroy()
 	self._rootElement:destroy()
 	self.backFrame:Destroy()
+	self._path = nil
 	self._tableInspector._tableRoots[self] = nil -- BAD
+	self._tableInspector:unregisterFrame(self.dragFrame)
+	self._tableInspector:unregisterFrame(self.nameFrame)
 end
 
 function TableRoot:getIndex()
@@ -414,7 +495,7 @@ function TableRoot:drag(exitInputType)
 		self.backFrame.Position = UDim2.fromScale(newScalePosition.x, newScalePosition.y)
 	end)
 
-	self._dragConnection2 = game:GetService("UserInputService").InputEnded:Connect(function(inputObject)
+	self._dragConnection2 = UserInputService.InputEnded:Connect(function(inputObject)
 		if inputObject.UserInputType ~= exitInputType then return end
 
 		local newPosition = getMousePosition() - mouseOffsetScale*self.backFrame.AbsoluteSize
@@ -494,6 +575,11 @@ end
 
 function Element:destroy()
 	self.backFrame:Destroy()
+	self._tableInspector:unregisterFrame(self.backFrame)
+	for index, entry in self._entries do
+		entry:destroy()
+	end
+	table.clear(self._entries)
 end
 
 function Element:inputEnded(inputObject)
@@ -521,23 +607,30 @@ function Element:getPath()
 end
 
 function Element:inputBegan(inputObject)
-	if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	local inputType = inputObject.UserInputType
+	local isLMB = inputType == Enum.UserInputType.MouseButton1
+	local isRMB = inputType == Enum.UserInputType.MouseButton2
+	if not (isLMB or isRMB) then return end
 
 	local controlPressed = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
 	local shiftPressed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 
-	if controlPressed and shiftPressed then
-	elseif controlPressed then -- pulls out the literal table
+	if isLMB and controlPressed and shiftPressed then
+		--if typeof(self._value) ~= "Instance" then return end
+		--game.Selection:set({self._value})
+	elseif isLMB and controlPressed then -- pulls out the literal table
 		if type(self._value) ~= "table" then return end
 		if not self.parent or not self.parent.pullOutElement then return end
 		-- pull this off and make a new root
 		local name = tostring(self.parent:getIndex())
+		
 		self.parent:pullOutElement(self) -- just replaces itself in the parent Entry with a blank thing
 		self.parent = nil
+		
 		local tableRoot = self._tableInspector:addTable(name, self._value, self)
 		tableRoot:drag(Enum.UserInputType.MouseButton1)
 		return true
-	elseif shiftPressed then -- pulls out the pathway
+	elseif isLMB and shiftPressed then -- pulls out the pathway
 		-- if type(self._value) ~= "table" then return end
 		if not self.parent or not self.parent.pullOutElement then return end
 		if self.parent:getIndexElement() == self then return end
@@ -551,13 +644,16 @@ function Element:inputBegan(inputObject)
 		local tableRoot = self._tableInspector:addPath(name, path, self)
 		tableRoot:drag(Enum.UserInputType.MouseButton1)
 		return true
-	else
+	elseif isLMB then
 		local t = os.clock()
 		if t - self._lastExpansionAttempt < doubleClickInterval and 
 			(self._lastExpansionAttemptPosition - getMousePosition()).magnitude < 4 then
 			self:toggleExpansion()
 			return true
 		end
+	elseif isRMB then
+		self:toggleExpansion()
+		return true
 	end
 end
 
@@ -590,8 +686,6 @@ end
 function Element:setValue(value)
 	if self._value ~= value then
 		self._upToDate = false
-		--self._tableInspector:unregisterHighlight(self._value)
-		--self._tableInspector:registerHighlight(self._value)
 		self._value = value
 	end
 end
@@ -986,6 +1080,7 @@ function Entry.new(tableInspector, parent, index)
 	local self = setmetatable({}, Entry)
 	self._tableInspector = tableInspector
 	self.parent = parent
+	
 
 	self.backFrame = Instance.new("Frame")
 	self.backFrame.BorderSizePixel = 0
