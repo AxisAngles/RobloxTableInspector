@@ -13,7 +13,7 @@
 -- Ctrl + LMB on a table to drag out the table
 
 -- interaction settings
-local backgroundDragEnabled = true
+local backgroundDragEnabled = false
 
 -- settings for customizing the look of the table inspector
 local textPad = Vector2.new(2, 2) -- radius
@@ -115,7 +115,7 @@ function TableInspector.new()
 
 		-- highlight effect
 		self.highlightedValue = nil
-		for i, frame in self._hoveringFrames do
+		for i, frame in next, self._hoveringFrames do
 			local object = self._activeElements[frame]
 			if object and object.getValue then
 				local value = object:getValue()
@@ -126,7 +126,7 @@ function TableInspector.new()
 			end
 		end
 
-		for tableRoot in self._tableRoots do
+		for tableRoot in next, self._tableRoots do
 			tableRoot:update()
 		end
 	end)
@@ -138,7 +138,7 @@ function TableInspector.new()
 			return
 		end
 
-		for i, frame in self._hoveringFrames do
+		for i, frame in next, self._hoveringFrames do
 			local object = self._activeElements[frame]
 			if object and object.inputBegan then
 				local stopInput = object:inputBegan(inputObject, frame)
@@ -154,7 +154,7 @@ function TableInspector.new()
 			return
 		end
 
-		for i, frame in self._hoveringFrames do
+		for i, frame in next, self._hoveringFrames do
 			local object = self._activeElements[frame]
 			if object and object.inputChanged then
 				local stopInput = object:inputChanged(inputObject, frame)
@@ -167,7 +167,7 @@ function TableInspector.new()
 		--if not self._visible then return end
 		--if inputProcessed then return end
 
-		for i, frame in self._hoveringFrames do
+		for i, frame in next, self._hoveringFrames do
 			local object = self._activeElements[frame]
 			if object and object.inputEnded then
 				local stopInput = object:inputEnded(inputObject, frame)
@@ -183,10 +183,10 @@ function TableInspector.new()
 end
 
 function TableInspector:destroy()
-	for i, connection in self._connections do
+	for i, connection in next, self._connections do
 		connection:Disconnect()
 	end
-	for tableRoot in self._tableRoots do
+	for tableRoot in next, self._tableRoots do
 		tableRoot:destroy()
 	end
 
@@ -208,7 +208,7 @@ function TableInspector:addTable(name, tab, optionalElement)
 end
 
 function TableInspector:removeTable(tab)
-	for tableRoot in self._tableRoots do
+	for tableRoot in next, self._tableRoots do
 		if tableRoot._path[1] == tab then
 			tableRoot:destroy()
 			return
@@ -256,7 +256,7 @@ end
 function TableInspector:getAbsoluteBounds()
 	local boundMin = Vector2.new( 1/0,  1/0)
 	local boundMax = Vector2.new(-1/0, -1/0)
-	for tableRoot in self._tableRoots do
+	for tableRoot in next, self._tableRoots do
 		local frameMin = tableRoot.dragFrame.AbsolutePosition
 		local frameMax = frameMin + tableRoot.dragFrame.AbsoluteSize
 		boundMin = boundMin:Min(frameMin)
@@ -576,7 +576,7 @@ end
 function Element:destroy()
 	self.backFrame:Destroy()
 	self._tableInspector:unregisterFrame(self.backFrame)
-	for index, entry in self._entries do
+	for index, entry in next, self._entries do
 		entry:destroy()
 	end
 	table.clear(self._entries)
@@ -694,7 +694,7 @@ function Element:collapse()
 	if self._isExpanded then
 		self._upToDate = false
 		self._isExpanded = false
-		for i, entry in self._entries do
+		for i, entry in next, self._entries do
 			entry.backFrame.Visible = false
 		end
 	end
@@ -704,7 +704,7 @@ function Element:expand()
 	if not self._isExpanded then
 		self._upToDate = false
 		self._isExpanded = true
-		for i, entry in self._entries do
+		for i, entry in next, self._entries do
 			-- this will look weird
 			entry.backFrame.Visible = true
 		end
@@ -773,7 +773,7 @@ function Element:setToValueForm()
 	self._form = "value"
 
 	self.backFrame.BorderSizePixel = 0
-	for i, entry in self._entries do
+	for i, entry in next, self._entries do
 		entry:destroy()
 	end
 	table.clear(self._entries)
@@ -795,7 +795,7 @@ function Element:remapEntries()
 	local orphanedEntries = {}
 	local orphanedValueElements = {}
 
-	for index, entry in entries do
+	for index, entry in next, entries do
 		if tab[index] == nil then
 			table.insert(orphanedEntries, entry)
 			entries[index] = nil
@@ -803,7 +803,7 @@ function Element:remapEntries()
 	end
 
 	-- reassign indices for maximum reuse
-	for index, value in tab do
+	for index, value in next, tab do
 		if not entries[index] then
 			local entry = table.remove(orphanedEntries)
 			if entry then
@@ -822,12 +822,12 @@ function Element:remapEntries()
 		end
 	end
 
-	for i, entry in orphanedEntries do
+	for i, entry in next, orphanedEntries do
 		table.insert(orphanedValueElements, entry:getValueElement())
 	end
 
 	local valueToEntry = {}
-	for index, newValue in tab do
+	for index, newValue in next, tab do
 		local entry = entries[index]
 		local oldValue = entry:getValue()
 		if newValue == oldValue then continue end
@@ -839,7 +839,7 @@ function Element:remapEntries()
 		end
 	end
 
-	for i, valueElement in orphanedValueElements do
+	for i, valueElement in next, orphanedValueElements do
 		local oldValue = valueElement:getValue()
 		local entry = valueToEntry[oldValue]
 		if entry then
@@ -848,12 +848,12 @@ function Element:remapEntries()
 	end
 
 	-- update all the valueElements to have the new value
-	for index, newValue in tab do
+	for index, newValue in next, tab do
 		local entry = entries[index]
 		entry:setValue(newValue)
 	end
 
-	for i, entry in orphanedEntries do
+	for i, entry in next, orphanedEntries do
 		entry:destroy()
 	end
 end
@@ -873,11 +873,40 @@ function Element:renderString()
 	self.dataFrame.TextColor3 = stringColor3
 end
 
+local function writeArgs(count, varargs)
+	if count == 0 then
+		if varargs then
+			return "..."
+		else
+			return ""
+		end
+	end
+	
+	local str = string.rep("_, ", count - 1)
+	
+	if varargs then
+		return str .. "_, ..."
+	else
+		return str .. "_"
+	end
+end
+
 function Element:renderFunction()
 	if self._isExpanded then
-		self:setText(tostring(self._value))
+		local source, name, line, count, varargs = debug.info(self._value, "snla")
+		source = string.match(source, "[^.]*$")
+		if name == "" then
+			self:setText(`{source}-{line}({writeArgs(count, varargs)})`)
+		else
+			self:setText(`{source}.{name}({writeArgs(count, varargs)})`)
+		end
 	else
-		self:setText("f(x)")
+		local name = debug.info(self._value, "n")
+		if name == "" then
+			self:setText("f()")
+		else
+			self:setText(`{name}()`)
+		end
 	end
 	self.dataFrame.TextColor3 = functionColor3
 end
@@ -938,15 +967,24 @@ end
 function Element:renderTable()
 	if not self._isExpanded then
 		local tab = self._value
-		local i = 0
 		local k = 0
-		while tab[i + 1] ~= nil do
+		local i = 0
+		
+		local prevIndex = nil
+		local i = 1
+
+		for index, value in next, tab do
+			if index ~= i then break end
+			prevIndex = i
 			i += 1
 		end
-		for index in tab do
+		
+		i -= 1
+
+		for index, value in next, tab, prevIndex do
 			k += 1
 		end
-		k -= i
+
 
 		local text = `{k}k {i}i`
 		if self.dataFrame.Text == text then return end -- source of bugs
@@ -995,7 +1033,7 @@ function Element:renderTable()
 	local dataSizeX = 0
 	local dataSizeY = 0
 
-	for i, index in sortedIndices do
+	for i, index in next, sortedIndices do
 		local entry = entries[index]
 		local entrySize = entry:update()
 		entry.backFrame.Position = UDim2.fromOffset(0, dataSizeY)
@@ -1003,7 +1041,7 @@ function Element:renderTable()
 		dataSizeY = dataSizeY + entrySize.y + linePad
 	end
 
-	for index, entry in entries do
+	for index, entry in next, entries do
 		local entrySize = entry:getSize()
 		entry.backFrame.Size = UDim2.fromOffset(dataSizeX, entrySize.y)
 	end
