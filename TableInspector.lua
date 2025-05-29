@@ -895,17 +895,19 @@ function Element:renderFunction()
 	if self._isExpanded then
 		local source, name, line, count, varargs = debug.info(self._value, "snla")
 		source = string.match(source, "[^.]*$")
+		local args = writeArgs(count, varargs)
 		if name == "" then
-			self:setText(`{source}-{line}({writeArgs(count, varargs)})`)
+			self:setText(`{source}-{line}({args})`)
 		else
-			self:setText(`{source}.{name}({writeArgs(count, varargs)})`)
+			self:setText(`{source}.{name}({args})`)
 		end
 	else
-		local name = debug.info(self._value, "n")
+		local name, count, varargs = debug.info(self._value, "na")
+		local args = writeArgs(count, varargs)
 		if name == "" then
-			self:setText("f()")
+			self:setText(`f({args})`)
 		else
-			self:setText(`{name}()`)
+			self:setText(`{name}({args})`)
 		end
 	end
 	self.dataFrame.TextColor3 = functionColor3
